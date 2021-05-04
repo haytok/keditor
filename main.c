@@ -7,6 +7,8 @@
 #include <string.h>
 #include <errno.h>
 
+#define CTRL_KEY(value) ((value) & 0x1f)
+
 void enableRauMode();
 void disableRauMode();
 void die(const char *msg);
@@ -75,7 +77,7 @@ int main(void) {
             printf("String %d ( %c )\r\n", c, c);
         }
         // printf("Input char is %c.\n", c);
-        if (c == 'q') {
+        if (c == 'q' || c == CTRL_KEY('q')) {
             break;
         }
     }
