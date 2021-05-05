@@ -6,6 +6,10 @@ CFLAGS += -pedantic
 
 main: main.c
 	@$(CC) $(CFLAGS) -o main.out main.c
+	@./main.out main.c
+
+no: main.c
+	@$(CC) $(CFLAGS) -o main.out main.c
 	@./main.out
 
 build: main.c
