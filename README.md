@@ -7,3 +7,9 @@
   - [Raw input and output](https://viewsourcecode.org/snaptoken/kilo/03.rawInputAndOutput.html)
   - [A text viewer](https://viewsourcecode.org/snaptoken/kilo/04.aTextViewer.html)
   - [A text editor](https://viewsourcecode.org/snaptoken/kilo/05.aTextEditor.html)
+
+## 実行方法
+
+```bash
+make
+```
