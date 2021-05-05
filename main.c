@@ -165,12 +165,19 @@ void editorDrawRows(abuf *ab) {
                 welcome_length = E.screencols;
             }
             int padding = (E.screencols - welcome_length) / 2;
+            if (padding) {
+                abAppend(ab, "~", 1);
+            }
+            while (padding--) {
+                abAppend(ab, " ", 1);
+            }
 
             abAppend(ab, welcome, welcome_length);
         } else {
             abAppend(ab, "~", 1);
         }
 
+        // この行削除のエスケープシーケンスを書き込むことで、画面を消して上書きで書き込むことができる。
         abAppend(ab, "\x1b[K", 3);
         if (y < E.screenrows - 1) {
             abAppend(ab, "\r\n", 2);
