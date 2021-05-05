@@ -9,6 +9,11 @@
 #include <sys/ioctl.h>
 
 #define CTRL_KEY(value) ((value) & 0x1f)
+#define ABUF_INIT {NULL, 0}
+#define KILO_VERSION "0.0.1"
+
+typedef struct editorConfig editorConfig;
+typedef struct abuf abuf;
 
 void enableRauMode();
 void disableRauMode();
@@ -19,6 +24,8 @@ void editorRefreshScreen();
 void editorDrawRows();
 void initEditor();
 int getCursorPosition(int *rows, int *cols);
+void abAppend(abuf *ab, char *s, int len);
+void abFree(abuf *ab);
 
 struct editorConfig {
     int screenrows;
@@ -26,7 +33,12 @@ struct editorConfig {
     struct termios orig_termios;
 };
 
-struct editorConfig E;
+struct abuf {
+    char *buf;
+    int len;
+};
+
+editorConfig E;
 
 void enableRauMode() {
     if (tcgetattr(STDIN_FILENO, &E.orig_termios) == -1) {
@@ -108,8 +120,8 @@ int getWindowSize(int *rows, int *cols) {
         }
         return getCursorPosition(rows, cols);
     } else {
-        *rows = ws.ws_col;
-        *cols = ws.ws_row;
+        *rows = ws.ws_row;
+        *cols = ws.ws_col;
         return 0;
     }
 }
@@ -142,23 +154,57 @@ int getCursorPosition(int *rows, int *cols) {
     return 0;
 }
 
-void editorDrawRows() {
+void editorDrawRows(abuf *ab) {
     int y = 0;
-    for (y = 0; y < E.screencols; y++) {
-        write(STDOUT_FILENO, "~", 1);
+    for (y = 0; y < E.screenrows; y++) {
+        // Welcome Messsage を描画
+        if (y == E.screenrows / 3) {
+            char welcome[80];
+            int welcome_length = snprintf(welcome, sizeof(welcome), "Keditor -- version %s", KILO_VERSION);
+            if (welcome_length > E.screencols) {
+                welcome_length = E.screencols;
+            }
+            int padding = (E.screencols - welcome_length) / 2;
 
-        if (y < E.screencols - 1) {
-            write(STDOUT_FILENO, "\r\n", 2);
+            abAppend(ab, welcome, welcome_length);
+        } else {
+            abAppend(ab, "~", 1);
+        }
+
+        abAppend(ab, "\x1b[K", 3);
+        if (y < E.screenrows - 1) {
+            abAppend(ab, "\r\n", 2);
         }
     }
 }
 
 void editorRefreshScreen() {
-    write(STDOUT_FILENO, "\x1b[2J", 4);
-    write(STDOUT_FILENO, "\x1b[H", 3);
+    abuf ab = ABUF_INIT;
 
-    editorDrawRows();
-    write(STDOUT_FILENO, "\x1b[H", 3);
+    abAppend(&ab, "\x1b[H", 3);
+
+    editorDrawRows(&ab);
+
+    abAppend(&ab, "\x1b[H", 3);
+
+    write(STDOUT_FILENO, ab.buf, ab.len);
+    abFree(&ab);
+}
+
+void abAppend(abuf *ab, char *s, int len) {
+    char *new = realloc(ab->buf, ab->len + len);
+
+    if (new == NULL) {
+        return;
+    }
+
+    memcpy(&new[ab->len], s, len);
+    ab->buf = new;
+    ab->len += len;
+}
+
+void abFree(abuf *ab) {
+    free(ab->buf);
 }
 
 void initEditor() {
