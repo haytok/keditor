@@ -18,7 +18,7 @@ typedef struct abuf abuf;
 void enableRauMode();
 void disableRauMode();
 void die(const char *msg);
-char editorReadKey();
+int editorReadKey();
 void editorProcessKeypress();
 void editorRefreshScreen();
 void editorDrawRows();
@@ -26,16 +26,31 @@ void initEditor();
 int getCursorPosition(int *rows, int *cols);
 void abAppend(abuf *ab, char *s, int len);
 void abFree(abuf *ab);
+void editorMoveCursor(int key);
 
 struct editorConfig {
     int screenrows;
     int screencols;
+    int cx;
+    int cy;
     struct termios orig_termios;
 };
 
 struct abuf {
     char *buf;
     int len;
+};
+
+enum editorKey {
+    ARROW_UP = 1000,
+    ARROW_RIGHT,
+    ARROW_DOWN,
+    ARROW_LEFT,
+    DELETE_KEY,
+    HOME_KEY,
+    END_KEY,
+    PAGE_UP,
+    PAGE_DOWN,
 };
 
 editorConfig E;
@@ -86,27 +101,133 @@ void die(const char *msg) {
 // デフォルトではカノニカルモード (cooked mode) なので、Enter が押されるまでプログラムにキー入力が受け渡されない。
 // この際、標準入力から受け取った値は、バッファに溜められ、Enter が押されると吐き出される。
 // したがって、エディタの機能を実装するためには、非カノニカルモード (raw mode) を実現する必要がある。
-char editorReadKey() {
+int editorReadKey() {
     int nread;
     char c;
-    // not= 1 にしないとｍマルチバイトに対応できない。
+    // not= 1 にしないとマルチバイトに対応できない。
     // この処理がイマイチ納得いっていない。
     while ((nread = read(STDIN_FILENO, &c, 1)) != 1) {
         if (nread < 0 && errno != EAGAIN) {
             die("read");
         }
     }
-    return c;
+
+    if (c == '\x1b') {
+        char seq[3];
+
+        if (read(STDIN_FILENO, &seq[0], 1) != 1) {
+            return '\x1b';
+        }
+        if (read(STDIN_FILENO, &seq[1], 1) != 1) {
+            return '\x1b';
+        }
+
+        if (seq[0] == '[') {
+            if (seq[1] >= '0' && seq[1] <= '9') {
+                if (read(STDIN_FILENO, &seq[2], 1) != 1) {
+                    return '\x1b';
+                }
+                // page キーと Delete キーの parse
+                if (seq[2] == '~') {
+                    switch (seq[1]) {
+                        case '1': return HOME_KEY; // 他プラットフォーム対応
+                        case '4': return END_KEY; // 他プラットフォーム対応
+                        case '3':
+                            return DELETE_KEY;
+                        case '5':
+                            return PAGE_UP;
+                        case '6':
+                            return PAGE_DOWN;
+                        case '7': return HOME_KEY; // 他プラットフォーム対応
+                        case '8': return END_KEY; // 他プラットフォーム対応
+                    }
+                }
+            } else {
+                switch (seq[1]) {
+                    // 矢印キーの parse
+                    case 'A':
+                        return ARROW_UP;
+                    case 'C':
+                        return ARROW_RIGHT;
+                    case 'B':
+                        return ARROW_DOWN;
+                    case 'D':
+                        return ARROW_LEFT;
+                    // Home, End キーの parse
+                    case 'H':
+                        return HOME_KEY;
+                    case 'F':
+                        return END_KEY;
+                }
+            }
+        } else if (seq[0] == 'O') {
+            switch (seq[1]) {
+                case 'H': return HOME_KEY; // 他プラットフォーム対応
+                case 'F': return END_KEY; // 他プラットフォーム対応
+            }
+        }
+        return '\x1b';
+    } else {
+        return c;
+    }
+}
+
+void editorMoveCursor(int key) {
+    switch (key) {
+        case ARROW_UP:
+            if (E.cy != 0) {
+                E.cy--;
+            }
+            break;
+        case ARROW_RIGHT:
+            if (E.cx != E.screencols - 1) {
+                E.cx++;
+            }
+            break;
+        case ARROW_DOWN:
+            if (E.cy != E.screenrows - 1) {
+                E.cy++;
+            }
+            break;
+        case ARROW_LEFT:
+            if (E.cx != 0) {
+                E.cx--;
+            }
+            break;
+    }
 }
 
 void editorProcessKeypress() {
-    char c = editorReadKey();
+    int c = editorReadKey();
 
     switch (c) {
         case CTRL_KEY('q'):
             write(STDOUT_FILENO, "\x1b[2J", 4);
             write(STDOUT_FILENO, "\x1b[H", 3);
             exit(EXIT_SUCCESS);
+            break;
+        // 画面の左端か右端にカーソルを移動させる
+        case HOME_KEY:
+            E.cx = 0;
+            break;
+        case END_KEY:
+            E.cx = E.screencols - 1;
+            break;
+        // 画面の一番上か一番下のカーソルを移動させる
+        case PAGE_UP:
+        case PAGE_DOWN:
+            {
+                int times = E.screenrows;
+                while (times--) {
+                    editorMoveCursor(c == PAGE_DOWN ? ARROW_DOWN : ARROW_UP);
+                }
+            }
+            break;
+        case ARROW_UP:
+        case ARROW_RIGHT:
+        case ARROW_DOWN:
+        case ARROW_LEFT:
+            editorMoveCursor(c);
             break;
     }
 }
@@ -188,11 +309,16 @@ void editorDrawRows(abuf *ab) {
 void editorRefreshScreen() {
     abuf ab = ABUF_INIT;
 
+    abAppend(&ab, "\x1b[?25l", 6);
     abAppend(&ab, "\x1b[H", 3);
 
     editorDrawRows(&ab);
 
-    abAppend(&ab, "\x1b[H", 3);
+    char buf[32];
+    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", E.cy + 1, E.cx + 1);
+    abAppend(&ab, buf, strlen(buf));
+
+    abAppend(&ab, "\x1b[?25h", 6);
 
     write(STDOUT_FILENO, ab.buf, ab.len);
     abFree(&ab);
@@ -215,6 +341,8 @@ void abFree(abuf *ab) {
 }
 
 void initEditor() {
+    E.cx = 0;
+    E.cy = 0;
     if (getWindowSize(&E.screenrows, &E.screencols) < 0) {
         die("getWindowSize");
     }
