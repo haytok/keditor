@@ -8,8 +8,23 @@
   - [A text viewer](https://viewsourcecode.org/snaptoken/kilo/04.aTextViewer.html)
   - [A text editor](https://viewsourcecode.org/snaptoken/kilo/05.aTextEditor.html)
 
-## 実行方法
+## コマンド
+
+- ビルドと実行
 
 ```bash
 make
+```
+
+- ビルド
+
+```bash
+make build
+```
+
+- デバッグ
+  - 入力キーとプログラムが受け取った値を確認できる。
+
+```bash
+make debug
 ```
