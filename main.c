@@ -1,3 +1,7 @@
+#define _DEFAULT_SOURCE
+#define _BSD_SOURCE
+#define _GNU_SOURCE
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -14,6 +18,7 @@
 
 typedef struct editorConfig editorConfig;
 typedef struct abuf abuf;
+typedef struct erow erow;
 
 void enableRauMode();
 void disableRauMode();
@@ -27,12 +32,21 @@ int getCursorPosition(int *rows, int *cols);
 void abAppend(abuf *ab, char *s, int len);
 void abFree(abuf *ab);
 void editorMoveCursor(int key);
+void editorOpen(char *filename);
+void editorAppendRow(char *s, size_t len);
+
+struct erow {
+    int size;
+    char *chars;
+};
 
 struct editorConfig {
     int screenrows;
     int screencols;
     int cx;
     int cy;
+    int numrows;
+    erow *row;
     struct termios orig_termios;
 };
 
@@ -278,24 +292,29 @@ int getCursorPosition(int *rows, int *cols) {
 void editorDrawRows(abuf *ab) {
     int y = 0;
     for (y = 0; y < E.screenrows; y++) {
-        // Welcome Messsage を描画
-        if (y == E.screenrows / 3) {
-            char welcome[80];
-            int welcome_length = snprintf(welcome, sizeof(welcome), "Keditor -- version %s", KILO_VERSION);
-            if (welcome_length > E.screencols) {
-                welcome_length = E.screencols;
-            }
-            int padding = (E.screencols - welcome_length) / 2;
-            if (padding) {
+        if (y >= E.numrows) {
+            // Welcome Messsage を描画
+            if (E.numrows == 0 && y == E.screenrows / 3) {
+                char welcome[80];
+                int welcome_length = snprintf(welcome, sizeof(welcome), "Keditor -- version %s", KILO_VERSION);
+                if (welcome_length > E.screencols) {
+                    welcome_length = E.screencols;
+                }
+                int padding = (E.screencols - welcome_length) / 2;
+                if (padding) {
+                    abAppend(ab, "~", 1);
+                }
+                while (padding--) {
+                    abAppend(ab, " ", 1);
+                }
+
+                abAppend(ab, welcome, welcome_length);
+            } else {
                 abAppend(ab, "~", 1);
             }
-            while (padding--) {
-                abAppend(ab, " ", 1);
-            }
-
-            abAppend(ab, welcome, welcome_length);
         } else {
-            abAppend(ab, "~", 1);
+            int len = E.row[y].size > E.screencols ? E.screencols : E.row[y].size;
+            abAppend(ab, E.row[y].chars, len);
         }
 
         // この行削除のエスケープシーケンスを書き込むことで、画面を消して上書きで書き込むことができる。
@@ -340,17 +359,57 @@ void abFree(abuf *ab) {
     free(ab->buf);
 }
 
+void editorOpen(char *filename) {
+    FILE *fp = fopen(filename, "r");
+    if (!fp) {
+        die("editorOpen");
+    }
+
+    char *line = NULL;
+    size_t linecap = 0;
+    ssize_t linelen;
+
+    // hogehoge != 1 にしていたため、改行があると、それ移行描画されない Bug が生じていた。
+    while ((linelen = getline(&line, &linecap, fp)) != -1) {
+        // E,row[hoge].chars に改行やキャリッジリターンを格納しない。
+        while (linelen > 0 && (line[linelen - 1] == '\r' || line[linelen - 1] == '\n')) {
+            linelen--;
+        }
+        editorAppendRow(line, linelen);
+    }
+
+    free(line);
+    fclose(fp);
+}
+
+void editorAppendRow(char *s, size_t len) {
+    E.row = realloc(E.row, sizeof(erow) * (E.numrows + 1));
+
+    int at = E.numrows;
+    E.row[at].size = len;
+    E.row[at].chars = malloc(sizeof(char) * (len + 1));
+    memcpy(E.row[at].chars, s, len);
+    E.row[at].chars[len] = '\0';
+    E.numrows++;
+}
+
 void initEditor() {
     E.cx = 0;
     E.cy = 0;
+    E.numrows = 0;
+    E.row = NULL;
     if (getWindowSize(&E.screenrows, &E.screencols) < 0) {
         die("getWindowSize");
     }
 }
 
-int main(void) {
+int main(int argc, char **argv) {
     enableRauMode();
     initEditor();
+
+    if (argc >= 2) {
+        editorOpen(argv[1]);
+    }
 
     while (true) {
         editorRefreshScreen();
