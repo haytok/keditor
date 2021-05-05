@@ -132,31 +132,46 @@ O_TRUNC は open()+truncate(fd, 0) やけど truncate() は指定した文字数
 - カノニカルモードの無効化
 - Ctrl + C, Ctrl + Z を無効化
 - Ctrl + S, Ctrl + Q を無効化
-- 
-- 
-- 
-- 
-- 
-- 
-- 
-- 
-- 
-- 
-- 
-- 
-- 
-- 
-- 
-- 
-- 
-- 
-- 
-- 
-- 
-- 
-- 
-- 
-- 
-- 
-- 
-- 
+- 2 章では、Ctrl + alphabetic Keys をマッピングした。
+
+
+## Window Size を取得するための関数
+- `ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws)` のように呼び出すと、`ws` オブジェクトに幅と高さの値が格納される。
+
+- また、以下の文が印象的だった。Python と違って C 言語ならではの書き方である。
+- This is a common approach to having functions return multiple values in C. It also allows you to use the return value to indicate success or failure.
+
+```c
+int getWindowSize(int *rows, int *cols) {
+  struct winsize ws;
+  if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == -1 || ws.ws_col == 0) {
+    return -1;
+  } else {
+    *cols = ws.ws_col;
+    *rows = ws.ws_row;
+    return 0;
+  }
+}
+```
+
+### 参考
+- [ターミナルの幅と高さに関するメモ書き](https://zenn.dev/kusaremkn/articles/abdbd2f38c3d98b145eb)
+
+## 課題
+- Window Size が変更された時に、screenrows と screencols を変更する処理の実装
+
+
+## if 文のデバッグ方法
+- `if (1 | hoge) {}` でこの if 文の中を必ず通るようにできるテクニック。
+
+## sscanf で文字列を展開できる
+
+## 入力キーとプログラムが受け取った値の対応関係
+
+|  入力キー  |  プログラムが受け取った値  |
+| :----: | :----: |
+| Page Up  |  \x1b[5~  |
+| Page Down |  \x1b[6~  |
+| Home |  \x1b[H~  |
+| End |  \x1b[F~  |
+| Delete |  \x1b[3~  |
