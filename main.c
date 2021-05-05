@@ -1,3 +1,4 @@
+//                                                                                                                                                                                                               //
 #define _DEFAULT_SOURCE
 #define _BSD_SOURCE
 #define _GNU_SOURCE
@@ -34,6 +35,7 @@ void abFree(abuf *ab);
 void editorMoveCursor(int key);
 void editorOpen(char *filename);
 void editorAppendRow(char *s, size_t len);
+void editorScroll();
 
 struct erow {
     int size;
@@ -47,6 +49,8 @@ struct editorConfig {
     int cy;
     int numrows;
     erow *row;
+    int rowoff;
+    int coloff;
     struct termios orig_termios;
 };
 
@@ -187,6 +191,8 @@ int editorReadKey() {
 }
 
 void editorMoveCursor(int key) {
+    erow *row = (E.cy >= E.numrows) ? NULL : &E.row[E.cy];
+
     switch (key) {
         case ARROW_UP:
             if (E.cy != 0) {
@@ -194,12 +200,12 @@ void editorMoveCursor(int key) {
             }
             break;
         case ARROW_RIGHT:
-            if (E.cx != E.screencols - 1) {
+            if (row && E.cx < row->size) {
                 E.cx++;
             }
             break;
         case ARROW_DOWN:
-            if (E.cy != E.screenrows - 1) {
+            if (E.cy < E.numrows) {
                 E.cy++;
             }
             break;
@@ -208,6 +214,13 @@ void editorMoveCursor(int key) {
                 E.cx--;
             }
             break;
+    }
+
+    // 行末から行末の短い行に移動した時に、カーソルが行末に移動するようなロジック
+    row = (E.cy >= E.numrows) ? NULL : &E.row[E.cy];
+    int rowlen = row ? row->size : 0;
+    if (E.cx > rowlen) {
+        E.cx = rowlen;
     }
 }
 
@@ -292,7 +305,8 @@ int getCursorPosition(int *rows, int *cols) {
 void editorDrawRows(abuf *ab) {
     int y = 0;
     for (y = 0; y < E.screenrows; y++) {
-        if (y >= E.numrows) {
+        int filerow = y + E.rowoff;
+        if (filerow >= E.numrows) {
             // Welcome Messsage を描画
             if (E.numrows == 0 && y == E.screenrows / 3) {
                 char welcome[80];
@@ -313,8 +327,14 @@ void editorDrawRows(abuf *ab) {
                 abAppend(ab, "~", 1);
             }
         } else {
-            int len = E.row[y].size > E.screencols ? E.screencols : E.row[y].size;
-            abAppend(ab, E.row[y].chars, len);
+            int len = E.row[filerow].size - E.coloff;
+            if (len < 0) {
+                len = 0;
+            }
+            if (len > E.screencols) {
+                len = E.screencols;
+            }
+            abAppend(ab, &E.row[filerow].chars[E.coloff], len);
         }
 
         // この行削除のエスケープシーケンスを書き込むことで、画面を消して上書きで書き込むことができる。
@@ -325,7 +345,26 @@ void editorDrawRows(abuf *ab) {
     }
 }
 
+void editorScroll() {
+    // y 方向
+    if (E.cy < E.rowoff) {
+        E.rowoff = E.cy;
+    }
+    if (E.cy >= E.screenrows + E.rowoff) {
+        E.rowoff = E.cy - E.screenrows + 1;
+    }
+    // x 方向
+    if (E.cx < E.coloff) {
+        E.coloff = E.cx;
+    }
+    if (E.cx >= E.screencols + E.coloff) {
+        E.coloff = E.cx - E.screencols + 1;
+    }
+}
+    //
 void editorRefreshScreen() {
+    editorScroll();
+
     abuf ab = ABUF_INIT;
 
     abAppend(&ab, "\x1b[?25l", 6);
@@ -334,7 +373,8 @@ void editorRefreshScreen() {
     editorDrawRows(&ab);
 
     char buf[32];
-    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", E.cy + 1, E.cx + 1);
+    // 絶対値 (E.cy) から相対値 (原点がウィンドウ) に変更する必要がある。
+    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", (E.cy - E.rowoff) + 1, (E.cx - E.coloff) + 1);
     abAppend(&ab, buf, strlen(buf));
 
     abAppend(&ab, "\x1b[?25h", 6);
@@ -398,6 +438,8 @@ void initEditor() {
     E.cy = 0;
     E.numrows = 0;
     E.row = NULL;
+    E.rowoff = 0;
+    E.coloff = 0;
     if (getWindowSize(&E.screenrows, &E.screencols) < 0) {
         die("getWindowSize");
     }
