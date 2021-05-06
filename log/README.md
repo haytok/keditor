@@ -178,8 +178,8 @@ int getWindowSize(int *rows, int *cols) {
 
 ## バグっぽい挙動について
 
-- 最終行にカーソルがある状態でARROW DOWN すると、最終行より一つ下の行に移動することができてしまう。
-  - 最終行に改行があると行数の表示がおかしい気がする点
+### 最終行にカーソルがある状態でARROW DOWN すると、最終行より一つ下の行に移動することができてしまう。
+  #### 最終行に改行があると行数の表示がおかしいことが原因で題意の件が生じている可能性
   - 初めは、ファイルからテキストを読み込む関数である `getline` が最終行の改行を無視するような仕様が原因でバグが生じていると考えていた。そこで、Vim の仕様を挙動から確認してみた。
   1. 24 行のファイル (VSCode 換算) で最終行に改行 (\n) がないケース
   2. 25 行のファイル (VSCode 換算) で最終行に改行 (\n) が 1 つあるケース
@@ -191,12 +191,13 @@ int getWindowSize(int *rows, int *cols) {
   - 一方で、VSCode では、GUI エディタということもあってか、最終行の改行の数も考慮して行数がカウントされている。
   - 以上をまとめると、Keditor は Vim と同様の挙動をしているので、Vim の思想的には正しいと言える。
 
-  - `main 関数` の while 文 の中で `editorProcessKeypress 関数` を呼び出す。
+  #### カーソルの表示 Index とファイル Index が 0-Index か 1-Index の違いで題意の件が生じている可能性
+  -  `main 関数` の while 文 の中で `editorProcessKeypress 関数` を呼び出す。
   - その中で `editorReadKey 関数` が呼び出され、キー入力を受け取る。
   - その関数の中で `editorMoveCursor 関数` が呼び出され、カーソルがの位置を表すグローバル変数を変更する。
   - 呼び出しが while 文 の中に戻り、`editorRefreshScreen 関数` が呼び出される。
   - その関数の中で、`editorScroll 関数` と `editorDrawRows 関数` と `editorDrawStatusBar 関数` が呼び出される。
-  - `editorRefreshScreen 関数` の以下の箇所を変更すると変な挙動になる。従って、この点は修正できない。
+  - `editorRefreshScreen 関数` の以下の箇所を変更すると変な挙動になる。したがって、この点は修正できない。
     ```bash
     snprintf(buf, sizeof(buf), "\x1b[%d;%dH", (E.cy - E.rowoff) + 1, (E.rx - E.coloff) + 1);
     ```
