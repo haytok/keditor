@@ -12,6 +12,8 @@
 #include <string.h>
 #include <errno.h>
 #include <sys/ioctl.h>
+#include <time.h>
+#include <stdarg.h>
 
 #define CTRL_KEY(value) ((value) & 0x1f)
 #define ABUF_INIT {NULL, 0}
@@ -40,6 +42,8 @@ void editorScroll();
 void editorUpdateRow(erow *row);
 int editorRowCxtoRx(erow *row, int cx);
 void editorDrawStatusBar(abuf *ab);
+void editorSetStatusMessage(const char *fmt, ...);
+void editorDrawMessageBar(abuf *ab);
 
 struct erow {
     int size;
@@ -59,6 +63,8 @@ struct editorConfig {
     int rowoff;
     int coloff;
     char *filename;
+    char statusmsg[80];
+    time_t statusmsg_time;
     struct termios orig_termios;
 };
 
@@ -430,6 +436,27 @@ void editorDrawStatusBar(abuf *ab) {
         }
     }
     abAppend(ab, "\x1b[m", 3);
+    abAppend(ab, "\r\n", 2);
+}
+
+void editorSetStatusMessage(const char *fmt, ...) {
+    va_list ap;
+
+    va_start(ap, fmt);
+    vsnprintf(E.statusmsg, sizeof(E.statusmsg), fmt, ap);
+    va_end(ap);
+    E.statusmsg_time = time(NULL);
+}
+
+void editorDrawMessageBar(abuf *ab) {
+    abAppend(ab, "\x1b[K", 3);
+    int msglen = strlen(E.statusmsg);
+    if (msglen > E.screencols) {
+        msglen = E.screencols;
+    }
+    if (msglen && time(NULL) - E.statusmsg_time < 5) {
+        abAppend(ab, E.statusmsg, msglen);
+    }
 }
 
 void editorRefreshScreen() {
@@ -442,6 +469,7 @@ void editorRefreshScreen() {
 
     editorDrawRows(&ab);
     editorDrawStatusBar(&ab);
+    editorDrawMessageBar(&ab);
 
     char buf[32];
     // 絶対値 (E.cy) から相対値 (原点がウィンドウ) に変更する必要がある。
@@ -548,10 +576,12 @@ void initEditor() {
     E.rowoff = 0;
     E.coloff = 0;
     E.filename = NULL;
+    E.statusmsg[0] = '\0';
+    E.statusmsg_time = 0;
     if (getWindowSize(&E.screenrows, &E.screencols) < 0) {
         die("getWindowSize");
     }
-    E.screenrows -= 1;
+    E.screenrows -= 2;
 }
 
 int main(int argc, char **argv) {
@@ -561,6 +591,8 @@ int main(int argc, char **argv) {
     if (argc >= 2) {
         editorOpen(argv[1]);
     }
+
+    editorSetStatusMessage("HELP: Ctrl-Q = quit");
 
     while (true) {
         editorRefreshScreen();
