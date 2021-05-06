@@ -223,7 +223,7 @@ void editorMoveCursor(int key) {
         case ARROW_LEFT:
             if (E.cx != 0) {
                 E.cx--;
-            } else if (E.cx > 0) {
+            } else if (E.cy > 0) {
                 // E.cx > 0 の評価式にしないとファイルの一番先頭にカーソルがある状態で Left Arrow を押すと、異常終了してしまう。
                 E.cy--;
                 E.cx = E.row[E.cy].size;
