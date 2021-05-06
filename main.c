@@ -445,9 +445,10 @@ void editorRefreshScreen() {
 
     char buf[32];
     // 絶対値 (E.cy) から相対値 (原点がウィンドウ) に変更する必要がある。
+    // この処理ではバグる。
+    // snprintf(buf, sizeof(buf), "\x1b[%d;%dH", (E.cy - E.rowoff) + 1 > E.numrows ? E.numrows : (E.cy - E.rowoff) + 1 , (E.rx - E.coloff) + 1);
     snprintf(buf, sizeof(buf), "\x1b[%d;%dH", (E.cy - E.rowoff) + 1, (E.rx - E.coloff) + 1);
     abAppend(&ab, buf, strlen(buf));
-
     abAppend(&ab, "\x1b[?25h", 6);
 
     write(STDOUT_FILENO, ab.buf, ab.len);
