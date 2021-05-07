@@ -14,6 +14,9 @@
 #include <sys/ioctl.h>
 #include <time.h>
 #include <stdarg.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 
 #define CTRL_KEY(value) ((value) & 0x1f)
 #define ABUF_INIT {NULL, 0}
@@ -44,6 +47,10 @@ int editorRowCxtoRx(erow *row, int cx);
 void editorDrawStatusBar(abuf *ab);
 void editorSetStatusMessage(const char *fmt, ...);
 void editorDrawMessageBar(abuf *ab);
+void editorRowInsertChar(erow *row, int at, int c);
+void editorInsertChar(int c);
+char *editorRowsToString(int *buflen);
+void editorSave();
 
 struct erow {
     int size;
@@ -74,6 +81,7 @@ struct abuf {
 };
 
 enum editorKey {
+    BACKSPACE = 127,
     ARROW_UP = 1000,
     ARROW_RIGHT,
     ARROW_DOWN,
@@ -127,6 +135,7 @@ void die(const char *msg) {
     exit(EXIT_FAILURE);
 }
 
+/// 入力キーを変換する関数
 // 無限ループで入力を待ち受けるが、Enter を押すと、処理が終了する。
 // read() == 0 としている時にこれが生じる。
 // read() は読み込んだ Byte 数を返すので、この条件式だと一文字読み込んでバッファに書き込んだ時点で while が終了する。
@@ -204,6 +213,7 @@ int editorReadKey() {
     }
 }
 
+/// カーソルの座標を表す変数を変更する関数
 void editorMoveCursor(int key) {
     erow *row = (E.cy >= E.numrows) ? NULL : &E.row[E.cy];
 
@@ -245,14 +255,22 @@ void editorMoveCursor(int key) {
     }
 }
 
+/// 入力キーを変換して、それに対応する処理を呼び出す関数
 void editorProcessKeypress() {
     int c = editorReadKey();
 
     switch (c) {
+        // TODO
+        case '\r':
+            break;
         case CTRL_KEY('q'):
             write(STDOUT_FILENO, "\x1b[2J", 4);
             write(STDOUT_FILENO, "\x1b[H", 3);
             exit(EXIT_SUCCESS);
+            break;
+        // 保存
+        case 's':
+            editorSave();
             break;
         // 画面の左端か右端にカーソルを移動させる
         case HOME_KEY:
@@ -262,6 +280,11 @@ void editorProcessKeypress() {
             if (E.cx < E.numrows) {
                 E.cx = E.row[E.cy].size;
             }
+            break;
+        // TODO
+        case BACKSPACE:
+        case CTRL_KEY('h'):
+        case DELETE_KEY:
             break;
         // 画面の一番上か一番下のカーソルを移動させる
         case PAGE_UP:
@@ -287,6 +310,13 @@ void editorProcessKeypress() {
         case ARROW_DOWN:
         case ARROW_LEFT:
             editorMoveCursor(c);
+            break;
+        // TODO
+        case CTRL_KEY('l'):
+        case '\x1b':
+            break;
+        default:
+            editorInsertChar(c);
             break;
     }
 }
@@ -499,6 +529,49 @@ void abFree(abuf *ab) {
     free(ab->buf);
 }
 
+char *editorRowsToString(int *buflen) {
+    int total_length = 0;
+    int i = 0;
+    for (i = 0; i < E.numrows; i++) {
+        total_length += (E.row[i].size + 1);
+    }
+    *buflen = total_length;
+
+    char *buf = malloc(sizeof(char) * total_length);
+    char *head = buf;
+    for (i = 0; i < E.numrows; i++) {
+        memcpy(head, &E.row[i], E.row[i].size);
+        *head = '\n';
+        head++;
+    }
+
+    return buf;
+}
+
+void editorSave() {
+    if (!E.filename) {
+        return;
+    }
+
+    int len;
+    char *buf = editorRowsToString(&len);
+
+    int fd = open(E.filename, O_RDWR | O_CREAT, 0644);
+    if (fd != -1) {
+        if (ftruncate(fd, len) != -1) {
+            if (write(fd, buf, len) == len) {
+                close(fd);
+                free(buf);
+                editorSetStatusMessage("%d bytes written to disk", len);
+                return;
+            }
+        }
+        close(fd);
+    }
+    free(buf);
+    editorSetStatusMessage("Can't save! I/O error: %s", strerror(errno));
+}
+
 void editorOpen(char *filename) {
     free(E.filename);
     E.filename = strdup(filename);
@@ -524,6 +597,7 @@ void editorOpen(char *filename) {
     fclose(fp);
 }
 
+// ファイルから読み込んだ実体を表示用に変換する
 void editorUpdateRow(erow *row) {
     free(row->render);
     int tabs = 0;
@@ -550,6 +624,7 @@ void editorUpdateRow(erow *row) {
     row->rsize = index;
 }
 
+// 行を追加する関数
 void editorAppendRow(char *s, size_t len) {
     E.row = realloc(E.row, sizeof(erow) * (E.numrows + 1));
 
@@ -565,6 +640,31 @@ void editorAppendRow(char *s, size_t len) {
     editorUpdateRow(&E.row[at]);
 
     E.numrows++;
+}
+
+/* Row Operations */
+
+// 文字を挿入する関数
+void editorRowInsertChar(erow *row, int at, int c) {
+    if (at < 0 || at > row->size) {
+        at = row->size;
+    }
+    row->chars = realloc(row->chars, sizeof(char) * (row->size + 2));
+    memmove(&row->chars[at + 1], &row->chars[at], row->size - at + 1);
+    row->chars[at] = c;
+    row->size++;
+    editorUpdateRow(row);
+}
+
+/* Editor Operations */
+
+// 文字の挿入とカーソルの移動
+void editorInsertChar(int c) {
+    if (E.cy ==  E.numrows) {
+        editorAppendRow("", 0);
+    }
+    editorRowInsertChar(&E.row[E.cy], E.cx, c);
+    E.cx++;
 }
 
 void initEditor() {
@@ -592,7 +692,7 @@ int main(int argc, char **argv) {
         editorOpen(argv[1]);
     }
 
-    editorSetStatusMessage("HELP: Ctrl-Q = quit");
+    editorSetStatusMessage("HELP: Ctrl-Q = quit | Ctrl-S = save");
 
     while (true) {
         editorRefreshScreen();
