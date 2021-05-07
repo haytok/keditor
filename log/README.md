@@ -201,3 +201,6 @@ int getWindowSize(int *rows, int *cols) {
     ```bash
     snprintf(buf, sizeof(buf), "\x1b[%d;%dH", (E.cy - E.rowoff) + 1, (E.rx - E.coloff) + 1);
     ```
+
+### バグかと思った時の調査項目
+- コンパイルは通るが、受け渡しているデータがそもそも違っている可能性がある。
