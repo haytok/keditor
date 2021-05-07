@@ -269,7 +269,7 @@ void editorProcessKeypress() {
             exit(EXIT_SUCCESS);
             break;
         // 保存
-        case 's':
+        case CTRL_KEY('s'):
             editorSave();
             break;
         // 画面の左端か右端にカーソルを移動させる
@@ -540,16 +540,16 @@ char *editorRowsToString(int *buflen) {
     char *buf = malloc(sizeof(char) * total_length);
     char *head = buf;
     for (i = 0; i < E.numrows; i++) {
-        memcpy(head, &E.row[i], E.row[i].size);
-        *head = '\n';
-        head++;
+        memcpy(head, E.row[i].chars, E.row[i].size);
+        head += E.row[i].size;
+        *head++ = '\n';
     }
 
     return buf;
 }
 
 void editorSave() {
-    if (!E.filename) {
+    if (E.filename == NULL) {
         return;
     }
 

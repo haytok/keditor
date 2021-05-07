@@ -6,7 +6,7 @@ CFLAGS += -pedantic
 
 main: main.c
 	@$(CC) $(CFLAGS) -o main.out main.c
-	@./main.out main.c
+	@./main.out input.txt
 
 no: main.c
 	@$(CC) $(CFLAGS) -o main.out main.c
