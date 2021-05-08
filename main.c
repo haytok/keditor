@@ -72,6 +72,7 @@ struct editorConfig {
     char *filename;
     char statusmsg[80];
     time_t statusmsg_time;
+    int dirty;
     struct termios orig_termios;
 };
 
@@ -447,7 +448,12 @@ void editorDrawStatusBar(abuf *ab) {
     // 左端に出すメッセージ
     char status[80];
     int len = snprintf(
-        status, sizeof(status), "%.20s - %d lines", E.filename ? E.filename : "[No Name]" , E.numrows
+        status,
+        sizeof(status),
+        "%.20s - %d lines %s",
+        E.filename ? E.filename : "[No Name]" ,
+        E.numrows,
+        E.dirty > 0 ? "( modified )" : ""
     );
     abAppend(ab, status, len);
     len = len > E.screencols ? E.screencols : len;
@@ -560,6 +566,7 @@ void editorSave() {
     if (fd != -1) {
         if (ftruncate(fd, len) != -1) {
             if (write(fd, buf, len) == len) {
+                E.dirty = 0;
                 close(fd);
                 free(buf);
                 editorSetStatusMessage("%d bytes written to disk", len);
@@ -592,6 +599,8 @@ void editorOpen(char *filename) {
         }
         editorAppendRow(line, linelen);
     }
+
+    E.dirty = 0;
 
     free(line);
     fclose(fp);
@@ -640,6 +649,7 @@ void editorAppendRow(char *s, size_t len) {
     editorUpdateRow(&E.row[at]);
 
     E.numrows++;
+    E.dirty++;
 }
 
 /* Row Operations */
@@ -654,6 +664,7 @@ void editorRowInsertChar(erow *row, int at, int c) {
     row->chars[at] = c;
     row->size++;
     editorUpdateRow(row);
+    E.dirty++;
 }
 
 /* Editor Operations */
@@ -678,6 +689,7 @@ void initEditor() {
     E.filename = NULL;
     E.statusmsg[0] = '\0';
     E.statusmsg_time = 0;
+    E.dirty = 0;
     if (getWindowSize(&E.screenrows, &E.screencols) < 0) {
         die("getWindowSize");
     }
