@@ -41,7 +41,7 @@ void abAppend(abuf *ab, char *s, int len);
 void abFree(abuf *ab);
 void editorMoveCursor(int key);
 void editorOpen(char *filename);
-void editorAppendRow(char *s, size_t len);
+void editorAppendRow(int at, char *s, size_t len);
 void editorScroll();
 void editorUpdateRow(erow *row);
 int editorRowCxtoRx(erow *row, int cx);
@@ -57,6 +57,7 @@ void editorDeleteChar();
 void editorFreeRow(erow *row);
 void editorDeleteRow(int at);
 void editorRowAppendString(erow *row, char *c, size_t len);
+void editorInsertNewLine();
 
 struct erow {
     int size;
@@ -271,6 +272,7 @@ void editorProcessKeypress() {
     switch (c) {
         // TODO
         case '\r':
+            editorInsertNewLine();
             break;
         case CTRL_KEY('q'):
             if (E.dirty > 0 && quit_times > 0) {
@@ -623,7 +625,7 @@ void editorOpen(char *filename) {
         while (linelen > 0 && (line[linelen - 1] == '\r' || line[linelen - 1] == '\n')) {
             linelen--;
         }
-        editorAppendRow(line, linelen);
+        editorAppendRow(E.numrows, line, linelen);
     }
 
     E.dirty = 0;
@@ -660,10 +662,14 @@ void editorUpdateRow(erow *row) {
 }
 
 // 行を追加する関数
-void editorAppendRow(char *s, size_t len) {
-    E.row = realloc(E.row, sizeof(erow) * (E.numrows + 1));
+void editorAppendRow(int at, char *s, size_t len) {
+    if (at < 0 || at > E.numrows) {
+        return;
+    }
 
-    int at = E.numrows;
+    E.row = realloc(E.row, sizeof(erow) * (E.numrows + 1));
+    memmove(&E.row[at + 1], &E.row[at], sizeof(erow) * (E.numrows - at));
+
     E.row[at].size = len;
     E.row[at].chars = malloc(sizeof(char) * (len + 1));
     // ファイルの中身をグローバル変数 (E.row[at].chars) に格納する処理の実装
@@ -676,6 +682,22 @@ void editorAppendRow(char *s, size_t len) {
 
     E.numrows++;
     E.dirty++;
+}
+
+void editorInsertNewLine() {
+    if (E.cx == 0) {
+        editorAppendRow(E.cy, "", 0);
+    } else {
+        erow *row = &E.row[E.cy];
+        editorAppendRow(E.cy + 1, &row->chars[E.cx], row->size - E.cx);
+        // editorAppendRow 内で realloc() が呼出されるので、E.row に割り当てられるアドレスが変更される可能性がある。
+        row = &E.row[E.cy];
+        row->size = E.cx;
+        row->chars[row->size] = '\0';
+        editorUpdateRow(row);
+    }
+    E.cy++;
+    E.cx = 0;
 }
 
 /* Row Operations */
@@ -733,7 +755,7 @@ void editorRowAppendString(erow *row, char *s, size_t len) {
 // 文字の挿入とカーソルの移動
 void editorInsertChar(int c) {
     if (E.cy ==  E.numrows) {
-        editorAppendRow("", 0);
+        editorAppendRow(E.numrows, "", 0);
     }
     editorRowInsertChar(&E.row[E.cy], E.cx, c);
     E.cx++;
