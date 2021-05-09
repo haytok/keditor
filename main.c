@@ -52,6 +52,8 @@ void editorRowInsertChar(erow *row, int at, int c);
 void editorInsertChar(int c);
 char *editorRowsToString(int *buflen);
 void editorSave();
+void editorInsertChar(int c);
+void editorDeleteChar();
 
 struct erow {
     int size;
@@ -299,6 +301,12 @@ void editorProcessKeypress() {
         case BACKSPACE:
         case CTRL_KEY('h'):
         case DELETE_KEY:
+            // delete キーが押された時はカーソルを右にずらしてバックスペースで削除する実装にする。
+            // すなはちカーソルにある文字を削除する。
+            if (c == DELETE_KEY) {
+                editorMoveCursor(ARROW_RIGHT);
+            }
+            editorDeleteChar();
             break;
         // 画面の一番上か一番下のカーソルを移動させる
         case PAGE_UP:
@@ -682,6 +690,17 @@ void editorRowInsertChar(erow *row, int at, int c) {
     E.dirty++;
 }
 
+// 文字を削除刷る関数
+void editorRowDeleteChar(erow *row, int at) {
+    if (at < 0 || at > row->size) {
+        return;
+    }
+    memmove(&row->chars[at], &row->chars[at + 1], row->size - at);
+    row->size--;
+    editorUpdateRow(row);
+    E.dirty++;
+}
+
 /* Editor Operations */
 
 // 文字の挿入とカーソルの移動
@@ -691,6 +710,16 @@ void editorInsertChar(int c) {
     }
     editorRowInsertChar(&E.row[E.cy], E.cx, c);
     E.cx++;
+}
+
+// カーソルの右側にある文字を削除し、カーソルを移動する関数
+void editorDeleteChar() {
+    if (E.cx == 0) {
+        return;
+    } else {
+        editorRowDeleteChar(&E.row[E.cy], E.cx - 1);
+        E.cx--;
+    }
 }
 
 void initEditor() {
