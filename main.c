@@ -22,6 +22,7 @@
 #define ABUF_INIT {NULL, 0}
 #define KEDITOR_VERSION "0.0.1"
 #define KEDITOR_TAB_STOP 8
+#define KEDITOR_QUIT_TIMES 2
 
 typedef struct editorConfig editorConfig;
 typedef struct abuf abuf;
@@ -258,6 +259,8 @@ void editorMoveCursor(int key) {
 
 /// 入力キーを変換して、それに対応する処理を呼び出す関数
 void editorProcessKeypress() {
+    static int quit_times = KEDITOR_QUIT_TIMES;
+
     int c = editorReadKey();
 
     switch (c) {
@@ -265,6 +268,16 @@ void editorProcessKeypress() {
         case '\r':
             break;
         case CTRL_KEY('q'):
+            if (E.dirty > 0 && quit_times > 0) {
+                editorSetStatusMessage(
+                    "WARNING!!! File has unsaved changes. "
+                    "Press Ctrl-Q %d more times to quit.",
+                    quit_times
+                );
+                quit_times--;
+                return;
+            }
+
             write(STDOUT_FILENO, "\x1b[2J", 4);
             write(STDOUT_FILENO, "\x1b[H", 3);
             exit(EXIT_SUCCESS);
@@ -320,6 +333,8 @@ void editorProcessKeypress() {
             editorInsertChar(c);
             break;
     }
+
+    quit_times = KEDITOR_QUIT_TIMES;
 }
 
 int getWindowSize(int *rows, int *cols) {
