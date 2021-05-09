@@ -54,6 +54,9 @@ char *editorRowsToString(int *buflen);
 void editorSave();
 void editorInsertChar(int c);
 void editorDeleteChar();
+void editorFreeRow(erow *row);
+void editorDeleteRow(int at);
+void editorRowAppendString(erow *row, char *c, size_t len);
 
 struct erow {
     int size;
@@ -701,6 +704,30 @@ void editorRowDeleteChar(erow *row, int at) {
     E.dirty++;
 }
 
+void editorFreeRow(erow *row) {
+    free(row->chars);
+    free(row->render);
+}
+
+void editorDeleteRow(int at) {
+    if (at < 0 || at >= E.numrows) {
+        return;
+    }
+    editorFreeRow(&E.row[at]);
+    memmove(&E.row[at], &E.row[at + 1], sizeof(erow) * (E.numrows - at - 1));
+    E.numrows--;
+    E.dirty++;
+}
+
+void editorRowAppendString(erow *row, char *s, size_t len) {
+    row->chars = realloc(row->chars, row->size + len + 1);
+    memcpy(&row->chars[row->size], s, len);
+    row->size += len;
+    row->chars[row->size] = '\0';
+    editorUpdateRow(row);
+    E.dirty++;
+}
+
 /* Editor Operations */
 
 // 文字の挿入とカーソルの移動
@@ -714,11 +741,22 @@ void editorInsertChar(int c) {
 
 // カーソルの右側にある文字を削除し、カーソルを移動する関数
 void editorDeleteChar() {
-    if (E.cx == 0) {
+    if (E.cy == E.numrows) {
         return;
-    } else {
-        editorRowDeleteChar(&E.row[E.cy], E.cx - 1);
+    }
+    if (E.cx == 0 && E.cy == 0) {
+        return;
+    }
+
+    erow *row = &E.row[E.cy];
+    if (E.cx > 0) {
+        editorRowDeleteChar(row, E.cx - 1);
         E.cx--;
+    } else {
+        E.cx = E.row[E.cy - 1].size;
+        editorRowAppendString(&E.row[E.cy - 1], row->chars, row->size);
+        editorDeleteRow(E.cy);
+        E.cy--;
     }
 }
 
